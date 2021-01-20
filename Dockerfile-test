@@ -1,0 +1,9 @@
+FROM alpine:3.7
+RUN apk add --no-cache bash curl php7 php7-json
+
+COPY test.sh .
+COPY generate_test_env.php .
+RUN php generate_test_env.php
+
+
+CMD ["./test.sh"]
