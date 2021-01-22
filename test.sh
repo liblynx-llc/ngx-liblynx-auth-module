@@ -10,9 +10,9 @@ test_response () {
   local expect=$3
   local extra=$4
 
-  cmd="curl -X GET -o /dev/null --silent --head --write-out '%{http_code}' http://${NGINX_PORT_8000_TCP_ADDR}:8000$path -H 'cache-control: no-cache' $extra"
+  local cmd="curl -X GET -o /dev/null --silent --head --write-out '%{http_code}' http://${NGINX_PORT_8000_TCP_ADDR}:8000$path -H 'cache-control: no-cache' $extra"
 
-  test=$( eval ${cmd} )
+  local test=$( eval ${cmd} )
   if [ "$test" -eq "$expect" ];then
     echo -e "${GREEN}${name}: passed (good response code ${test})${NONE}";
   else
@@ -27,9 +27,9 @@ test_redirect() {
   local pattern=$3
   local extra=$4
 
-  cmd="curl -X GET -o /dev/null --silent --head --write-out '%{redirect_url}' http://${NGINX_PORT_8000_TCP_ADDR}:8000$path -H 'cache-control: no-cache' $extra"
+  local cmd="curl -X GET -o /dev/null --silent --head --write-out '%{redirect_url}' http://${NGINX_PORT_8000_TCP_ADDR}:8000$path -H 'cache-control: no-cache' $extra"
 
-  test=$( eval ${cmd} )
+  local test=$( eval ${cmd} )
 
   if [[ $test =~ $pattern ]];then
     echo -e "${GREEN}${name}: passed (good redirect)${NONE}";
@@ -44,9 +44,9 @@ test_cookie() {
   local path=$2
   local pattern=$3
 
-  cmd="curl -D - -X GET -o /dev/null --silent http://${NGINX_PORT_8000_TCP_ADDR}:8000$path -H 'cache-control: no-cache' $extra | grep Set-Cookie"
+  local cmd="curl -D - -X GET -o /dev/null --silent http://${NGINX_PORT_8000_TCP_ADDR}:8000$path -H 'cache-control: no-cache' $extra | grep Set-Cookie"
 
-  test=$( eval ${cmd} )
+  local test=$( eval ${cmd} )
 
   if [[ $test =~ $pattern ]];then
     echo -e "${GREEN}${name}: passed (good cookie response)${NONE}";
@@ -64,7 +64,6 @@ get_body_from_jwt() {
   base64=$(echo $body | sed 's/-/+/g; s/_/\//g')
   json=$(echo $base64 | base64 -d)
 
-
   echo $json
 }
 
@@ -72,9 +71,9 @@ test_referrer() {
   local name=$1
   local path=$2
 
-  cmd="curl -D - -X GET -o /dev/null --silent --referer http://example.com/foo http://${NGINX_PORT_8000_TCP_ADDR}:8000$path -H 'cache-control: no-cache' $extra | grep Location | sed 's/.*req=//'"
-  jwt=$( eval ${cmd} )
-  body=$(get_body_from_jwt $jwt)
+  local cmd="curl -D - -X GET -o /dev/null --silent --referer http://example.com/foo http://${NGINX_PORT_8000_TCP_ADDR}:8000$path -H 'cache-control: no-cache' $extra | grep Location | sed 's/.*req=//'"
+  local jwt=$( eval ${cmd} )
+  local body=$(get_body_from_jwt $jwt)
 
   if [[ $body =~ "example.com" ]];then
     echo -e "${GREEN}${name}: passed (referrer picked up)${NONE}";
