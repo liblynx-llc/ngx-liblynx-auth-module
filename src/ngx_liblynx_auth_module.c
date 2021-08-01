@@ -21,6 +21,8 @@ typedef struct {
     ngx_str_t auth_liblynx_loginurl;
     ngx_str_t auth_liblynx_key;
     ngx_flag_t auth_liblynx_enabled;
+    ngx_flag_t auth_liblynx_redirector;
+    ngx_flag_t auth_liblynx_logout;
     ngx_str_t auth_liblynx_algorithm;
     ngx_flag_t auth_liblynx_validate_ip;
     ngx_str_t auth_liblynx_content_code;
@@ -44,6 +46,9 @@ static int redirect_with_cookie(ngx_http_request_t *r, ngx_liblynx_auth_loc_conf
 static int add_cookie(ngx_http_request_t *r, ngx_liblynx_auth_loc_conf_t *config,
                       char *jwtCookieValChrPtr, jwt_t *jwt);
 static int server_error(ngx_http_request_t *r, char *msg);
+static char *get_target_from_url(ngx_http_request_t *r);
+static int redirect_target(ngx_http_request_t *r, char *target);
+static int clear_cookie(ngx_http_request_t *r, ngx_liblynx_auth_loc_conf_t *config);
 
 static ngx_command_t ngx_liblynx_auth_commands[] = {
 
@@ -61,6 +66,13 @@ static ngx_command_t ngx_liblynx_auth_commands[] = {
      NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_FLAG,
      ngx_conf_set_flag_slot, NGX_HTTP_LOC_CONF_OFFSET,
      offsetof(ngx_liblynx_auth_loc_conf_t, auth_liblynx_enabled), NULL},
+
+    {ngx_string("auth_liblynx_redirector"), NGX_HTTP_LOC_CONF | NGX_CONF_FLAG,
+     ngx_conf_set_flag_slot, NGX_HTTP_LOC_CONF_OFFSET,
+     offsetof(ngx_liblynx_auth_loc_conf_t, auth_liblynx_redirector), NULL},
+
+    {ngx_string("auth_liblynx_logout"), NGX_HTTP_LOC_CONF | NGX_CONF_FLAG, ngx_conf_set_flag_slot,
+     NGX_HTTP_LOC_CONF_OFFSET, offsetof(ngx_liblynx_auth_loc_conf_t, auth_liblynx_logout), NULL},
 
     {ngx_string("auth_liblynx_algorithm"),
      NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
@@ -252,6 +264,27 @@ static ngx_int_t ngx_liblynx_auth_handler(ngx_http_request_t *r) {
             // the code is required, but not present in the jwt, so we go to the
             // denial page
             return redirect_denial(r, config);
+        }
+    }
+
+    if (config->auth_liblynx_redirector) {
+        // this location is configured as a redirector - if we reach this far, we're
+        // authenticated, and so we look for a target query string and redirect to it
+        char *target;
+        target = get_target_from_url(r);
+        if (target) {
+            return redirect_target(r, target);
+        }
+    }
+
+    if (config->auth_liblynx_logout) {
+        // this location is configured as a logout - so we clear our cookie
+        // authenticated, and so we look for a target query string and redirect to it
+        char *target;
+        target = get_target_from_url(r);
+        if (target) {
+            clear_cookie(r, config);
+            return redirect_target(r, target);
         }
     }
 
@@ -461,8 +494,89 @@ static int add_cookie(ngx_http_request_t *r, ngx_liblynx_auth_loc_conf_t *config
     set_cookie->value.len = p - cookie;
     set_cookie->value.data = cookie;
 
-    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "set cookie: \"%V\"", &set_cookie->value);
+    // ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "set cookie: \"%V\"", &set_cookie->value);
     return NGX_OK;
+}
+
+static int clear_cookie(ngx_http_request_t *r, ngx_liblynx_auth_loc_conf_t *config) {
+    time_t expires;
+    int len;
+    int valueLen;
+    u_char *cookie;
+    ngx_table_elt_t *set_cookie;
+    u_char *p;
+
+    // set expiry to 2000-01-01
+    expires = 946684800;
+
+    valueLen = 0;
+    len = config->auth_liblynx_cookie_name.len + 1 + valueLen;
+
+    len += sizeof("; expires=") - 1 + sizeof("Mon, 01 Sep 1970 00:00:00 GMT") - 1;
+
+    if (config->auth_liblynx_cookie_attrs.len) {
+        len += 2 + config->auth_liblynx_cookie_attrs.len;
+    }
+
+    cookie = ngx_pnalloc(r->pool, len);
+    if (cookie == NULL) {
+        return NGX_ERROR;
+    }
+
+    p = ngx_copy(cookie, config->auth_liblynx_cookie_name.data,
+                 config->auth_liblynx_cookie_name.len);
+    *p++ = '=';
+    // no value
+
+    // add expires
+    p = ngx_cpymem(p, "; expires=", sizeof("; expires=") - 1);
+    p = ngx_http_cookie_time(p, expires);
+
+    // add custom attrs
+    if (config->auth_liblynx_cookie_attrs.len) {
+        *p++ = ';';
+        *p++ = ' ';
+        p = ngx_cpymem(p, config->auth_liblynx_cookie_attrs.data,
+                       config->auth_liblynx_cookie_attrs.len);
+    }
+
+    set_cookie = ngx_list_push(&r->headers_out.headers);
+    if (set_cookie == NULL) {
+        return NGX_ERROR;
+    }
+
+    set_cookie->hash = 1;
+    ngx_str_set(&set_cookie->key, "Set-Cookie");
+    set_cookie->value.len = p - cookie;
+    set_cookie->value.data = cookie;
+
+    // ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "set cookie: \"%V\"", &set_cookie->value);
+    return NGX_OK;
+}
+
+static int redirect_target(ngx_http_request_t *r, char *target) {
+    r->headers_out.location = ngx_list_push(&r->headers_out.headers);
+
+    if (r->headers_out.location == NULL) {
+        ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    r->headers_out.location->hash = 1;
+    r->headers_out.location->key.len = sizeof("Location") - 1;
+    r->headers_out.location->key.data = (u_char *)"Location";
+
+    int redirectLen;
+    u_char *redirectUrl;
+
+    redirectLen = strlen(target);
+    redirectUrl = ngx_palloc(r->pool, redirectLen);
+
+    ngx_memcpy(redirectUrl, target, redirectLen);
+    r->headers_out.location->value.len = redirectLen;
+    r->headers_out.location->value.data = redirectUrl;
+
+    return NGX_HTTP_MOVED_TEMPORARILY;
 }
 
 static int redirect_denial(ngx_http_request_t *r, ngx_liblynx_auth_loc_conf_t *config) {
@@ -576,6 +690,8 @@ static void *ngx_liblynx_auth_create_loc_conf(ngx_conf_t *cf) {
     // set the flag to unset
     conf->auth_liblynx_enabled = (ngx_flag_t)-1;
     conf->auth_liblynx_validate_ip = (ngx_flag_t)-1;
+    conf->auth_liblynx_redirector = (ngx_flag_t)-1;
+    conf->auth_liblynx_logout = (ngx_flag_t)-1;
 
     ngx_conf_log_error(NGX_LOG_DEBUG, cf, 0, "Created Location Configuration");
 
@@ -601,6 +717,16 @@ static char *ngx_liblynx_auth_merge_loc_conf(ngx_conf_t *cf, void *parent, void 
     if (conf->auth_liblynx_enabled == ((ngx_flag_t)-1)) {
         conf->auth_liblynx_enabled =
             (prev->auth_liblynx_enabled == ((ngx_flag_t)-1)) ? 0 : prev->auth_liblynx_enabled;
+    }
+
+    if (conf->auth_liblynx_redirector == ((ngx_flag_t)-1)) {
+        conf->auth_liblynx_redirector =
+            (prev->auth_liblynx_redirector == ((ngx_flag_t)-1)) ? 0 : prev->auth_liblynx_redirector;
+    }
+
+    if (conf->auth_liblynx_logout == ((ngx_flag_t)-1)) {
+        conf->auth_liblynx_logout =
+            (prev->auth_liblynx_logout == ((ngx_flag_t)-1)) ? 0 : prev->auth_liblynx_logout;
     }
 
     if (conf->auth_liblynx_validate_ip == ((ngx_flag_t)-1)) {
@@ -645,6 +771,58 @@ static char *get_jwt_from_url(ngx_http_request_t *r) {
     }
 
     return jwtValChrPtr;
+}
+
+static char *get_target_from_url(ngx_http_request_t *r) {
+    char *ampersand;
+    size_t arglen;
+    char *pos;
+    int fqdn = 0;
+
+    // find target= in the query string
+    pos = (char *)ngx_strstr(r->args.data, "target=");
+    if (!pos) {
+        return NULL;
+    }
+    pos += sizeof("target=") - 1;
+
+    int offset = pos - (char *)r->args.data;
+    arglen = r->args.len - offset;
+
+    // check if there's anything after it...
+    ampersand = (char *)ngx_strlchr((u_char *)pos, (u_char *)pos + arglen, '&');
+    if (ampersand) {
+        arglen = ampersand - pos;
+    }
+
+    // now we can decode it
+    u_char *decoded = ngx_palloc(r->pool, arglen + 1);
+    u_char *ptr = decoded;
+    ngx_unescape_uri(&ptr, (u_char **)&pos, arglen, NGX_UNESCAPE_URI);
+    ptr[0] = '\0';
+
+    // the target must be relative - we redirect to the *proxied* target
+    if (ngx_strncasecmp(decoded, (u_char *)"http://", sizeof("http://") - 1) == 0) {
+        decoded += sizeof("http://") - 1;
+        fqdn = 1;
+    }
+    if (ngx_strncasecmp(decoded, (u_char *)"https://", sizeof("https://") - 1) == 0) {
+        decoded += sizeof("https://") - 1;
+        fqdn = 1;
+    }
+
+    if (fqdn) {
+        // skip domain part to slash
+        decoded = (u_char *)ngx_strstr(decoded, (u_char *)"/");
+        if (!decoded) {
+            // we really expect at least a slash
+            return NULL;
+        }
+    }
+
+    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "get_target_from_url(2) decoded=%s", decoded);
+
+    return (char *)decoded;
 }
 
 static char *get_jwt_from_cookie(ngx_http_request_t *r, ngx_str_t auth_liblynx_cookie_name) {

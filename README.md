@@ -98,6 +98,28 @@ authentication for protected content areas you want to secure.
 auth_liblynx_enabled on;
 ```
 
+### auth_liblynx_redirector
+
+Can only be used at a `location` level and specifies the location is a redirector and will include a 'target' query string.
+
+A redirector can be used when the origin site has pages which can be viewed without authentication, but
+show full content when authenticated. The page can detect a visitor is not authenticated, and offer a login link
+which goes via the redirector. This link should include a `target` query string argument which gives the URL of the
+page to return to after authentication.
+
+```
+auth_liblynx_redirector on;
+```
+
+### auth_liblynx_logout
+
+Can only be used at a `location` level, and indicates a location is a logout location - requesting a path in this location will clear any authentication cookies and redirect to a `target` query string
+
+```
+auth_liblynx_logout on;
+```
+
+
 ### auth_liblynx_cookie_name
 
 This is the name of the cookie used to store the access token. By default this is `lljwt`
