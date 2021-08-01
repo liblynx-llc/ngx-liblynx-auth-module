@@ -60,7 +60,7 @@ start-nginx:
 .PHONY: test-runner
 test-runner  : ## Build container for running tests
 test-runner:
-	docker image build -f Dockerfile-test -t $(DOCKER_ORG_NAME)/liblynx-nginx-test-runner .
+	docker image build --no-cache -f Dockerfile-test -t $(DOCKER_ORG_NAME)/liblynx-nginx-test-runner .
 
 .PHONY: test
 test               : ## Run tests against nginx container
