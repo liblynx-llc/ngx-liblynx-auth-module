@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   login URLs which redirect to a target page when authenticated
 - Added `auth_liblynx_logout` configuration setting to create automatic
   logout URLs which clear the authentication cookie and redirect to a target
+- Added `auth_liblynx_soft` configuration setting to set up paths with will
+  attempt authentication but still allow anonymous access 
 - Added a build environment for Ubuntu 20.04 using Nginx 1.18.0
 
 ## [1.0.0] - 2021-01-20
