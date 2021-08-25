@@ -22,6 +22,7 @@ typedef struct {
     ngx_str_t auth_liblynx_key;
     ngx_flag_t auth_liblynx_enabled;
     ngx_flag_t auth_liblynx_redirector;
+    ngx_flag_t auth_liblynx_soft;
     ngx_flag_t auth_liblynx_logout;
     ngx_str_t auth_liblynx_algorithm;
     ngx_flag_t auth_liblynx_validate_ip;
@@ -70,6 +71,9 @@ static ngx_command_t ngx_liblynx_auth_commands[] = {
     {ngx_string("auth_liblynx_redirector"), NGX_HTTP_LOC_CONF | NGX_CONF_FLAG,
      ngx_conf_set_flag_slot, NGX_HTTP_LOC_CONF_OFFSET,
      offsetof(ngx_liblynx_auth_loc_conf_t, auth_liblynx_redirector), NULL},
+
+    {ngx_string("auth_liblynx_soft"), NGX_HTTP_LOC_CONF | NGX_CONF_FLAG, ngx_conf_set_flag_slot,
+     NGX_HTTP_LOC_CONF_OFFSET, offsetof(ngx_liblynx_auth_loc_conf_t, auth_liblynx_soft), NULL},
 
     {ngx_string("auth_liblynx_logout"), NGX_HTTP_LOC_CONF | NGX_CONF_FLAG, ngx_conf_set_flag_slot,
      NGX_HTTP_LOC_CONF_OFFSET, offsetof(ngx_liblynx_auth_loc_conf_t, auth_liblynx_logout), NULL},
@@ -239,6 +243,15 @@ static ngx_int_t ngx_liblynx_auth_handler(ngx_http_request_t *r) {
         }
     }
 
+    if (config->auth_liblynx_soft == 0) {
+        // we are on a 'hard' authentication path, so we cannot tolerate a JWT which is anonymous
+        if (jwt_get_grant_bool(jwt, "known") == 0) {
+            // we've got an anonymous jwt on a hard authenticated path, so we have to
+            // redirect to the login
+            return redirect_to_login(r, config, jwt);
+        }
+    }
+
     // do a content code check
     if (config->auth_liblynx_content_code.len) {
         // a content code has been configured, it must appear in the jwt as a grant
@@ -353,6 +366,11 @@ static int redirect_to_login(ngx_http_request_t *r, ngx_liblynx_auth_loc_conf_t 
     if (r->headers_in.referer) {
         jwt_add_grant(jwtTransfer, "ref",
                       ngx_str_t_to_char_ptr(r->pool, r->headers_in.referer->value));
+    }
+
+    // set the soft flag if appropriate
+    if (config->auth_liblynx_soft) {
+        jwt_add_grant_bool(jwtTransfer, "soft", 1);
     }
 
     strTransfer = jwt_encode_str(jwtTransfer);
@@ -691,6 +709,7 @@ static void *ngx_liblynx_auth_create_loc_conf(ngx_conf_t *cf) {
     conf->auth_liblynx_enabled = (ngx_flag_t)-1;
     conf->auth_liblynx_validate_ip = (ngx_flag_t)-1;
     conf->auth_liblynx_redirector = (ngx_flag_t)-1;
+    conf->auth_liblynx_soft = (ngx_flag_t)-1;
     conf->auth_liblynx_logout = (ngx_flag_t)-1;
 
     ngx_conf_log_error(NGX_LOG_DEBUG, cf, 0, "Created Location Configuration");
@@ -722,6 +741,11 @@ static char *ngx_liblynx_auth_merge_loc_conf(ngx_conf_t *cf, void *parent, void 
     if (conf->auth_liblynx_redirector == ((ngx_flag_t)-1)) {
         conf->auth_liblynx_redirector =
             (prev->auth_liblynx_redirector == ((ngx_flag_t)-1)) ? 0 : prev->auth_liblynx_redirector;
+    }
+
+    if (conf->auth_liblynx_soft == ((ngx_flag_t)-1)) {
+        conf->auth_liblynx_soft =
+            (prev->auth_liblynx_soft == ((ngx_flag_t)-1)) ? 0 : prev->auth_liblynx_soft;
     }
 
     if (conf->auth_liblynx_logout == ((ngx_flag_t)-1)) {

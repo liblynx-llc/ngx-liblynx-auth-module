@@ -118,6 +118,16 @@ main() {
   test_redirect "Check denial redirect pattern" "/secure-abcd/" '^https://example\.com/denied' "--cookie \"lljwt=${VALID_JWT}\""
 
   test_referrer "Check referrer included in login request" "/secure/"
+
+  # ensure soft area redirects to login
+  test_response "Soft test without jwt cookie" "/soft/" "302"
+  test_redirect "Soft test without jwt cookie" "/soft/" '^https://example\.com\?req='
+
+  #anon cookie is allowed
+  test_response "Soft test with anon jwt" "/soft/" "200" "--cookie \"lljwt=${ANON_JWT}\""
+
+  #anon cookie not allowed in secure area
+  test_response "Secure test with anon jwt" "/secure/" "302" "--cookie \"lljwt=${ANON_JWT}\""
 }
 
 main "$@"

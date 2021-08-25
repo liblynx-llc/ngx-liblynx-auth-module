@@ -111,6 +111,25 @@ page to return to after authentication.
 auth_liblynx_redirector on;
 ```
 
+### auth_liblynx_soft
+
+Can only be used at a `location` level and specifies the location allows 'soft' authentication. That means
+The module will *attempt* authentication with the visitors IP, but will ultimately allow the request to
+processed to the origin.
+
+If the visitors IP was not recognized, then the origin will receive an 'anonymous' JWT. The application can use
+this to force a login (possibly utilizing the `auth_liblynx_redirector` directive above)
+
+The anonymous JWT will contain the following:
+
+* a `known` claim set to `false` to indicate an anonymous authentication
+* `llaid` will be `0`  
+* `llorg` will be `Anonymous`
+
+```
+auth_liblynx_soft on;
+```
+
 ### auth_liblynx_logout
 
 Can only be used at a `location` level, and indicates a location is a logout location - requesting a path in this location will clear any authentication cookies and redirect to a `target` query string

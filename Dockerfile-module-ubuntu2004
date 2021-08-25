@@ -75,6 +75,7 @@ RUN rm -rf /usr/share/nginx/html
 RUN cp -r /root/dl/nginx/html /usr/share/nginx
 RUN cp -r /usr/share/nginx/html /usr/share/nginx/secure
 RUN cp -r /usr/share/nginx/html /usr/share/nginx/secure-abcd
+RUN cp -r /usr/share/nginx/html /usr/share/nginx/soft
 RUN /usr/sbin/useradd nginx
 RUN mkdir -p /var/lib/nginx/tmp
 RUN chown -R nginx.nginx /var/lib/nginx/tmp
