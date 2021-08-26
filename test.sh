@@ -27,7 +27,7 @@ test_redirect() {
   local pattern=$3
   local extra=$4
 
-  local cmd="curl -X GET -o /dev/null --silent --head --write-out '%{redirect_url}' http://${NGINX_PORT_8000_TCP_ADDR}:8000$path -H 'cache-control: no-cache' $extra"
+  local cmd="curl -X GET -o /dev/null --silent --head --write-out '%{redirect_url}' 'http://${NGINX_PORT_8000_TCP_ADDR}:8000$path' -H 'cache-control: no-cache' $extra"
 
   local test=$( eval ${cmd} )
 
@@ -35,6 +35,7 @@ test_redirect() {
     echo -e "${GREEN}${name}: passed (good redirect)${NONE}";
   else
     echo -e "${RED}${name}:${path} redirect failed (unexpected redirect to ${test})${NONE}";
+    echo -e "${RED}${cmd}${NONE}";
   fi
 }
 
@@ -92,6 +93,11 @@ main() {
   test_response "Secure test without jwt cookie" "/secure/" "302"
   test_redirect "Secure test without jwt cookie" "/secure/" '^https://example\.com\?req='
 
+  test_redirect "Redirector test without jwt cookie" "/login?target=http://foo.com"
+  test_redirect "Redirector test with jwt in url" "/login?_lljwt=${VALID_JWT}&target=http://foo.com" '^http://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/login\?target=http://foo.com'
+  test_redirect "Redirector test with jwt cookie" "/login?target=http://foo.com/banjo" '^http://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:8000/banjo' "--cookie \"lljwt=${VALID_JWT}\""
+
+
   # if valid JWT cookie given, all is well
   test_response "Secure test with jwt cookie" "/secure/" "200" "--cookie \"lljwt=${VALID_JWT}\""
 
@@ -112,6 +118,16 @@ main() {
   test_redirect "Check denial redirect pattern" "/secure-abcd/" '^https://example\.com/denied' "--cookie \"lljwt=${VALID_JWT}\""
 
   test_referrer "Check referrer included in login request" "/secure/"
+
+  # ensure soft area redirects to login
+  test_response "Soft test without jwt cookie" "/soft/" "302"
+  test_redirect "Soft test without jwt cookie" "/soft/" '^https://example\.com\?req='
+
+  #anon cookie is allowed
+  test_response "Soft test with anon jwt" "/soft/" "200" "--cookie \"lljwt=${ANON_JWT}\""
+
+  #anon cookie not allowed in secure area
+  test_response "Secure test with anon jwt" "/secure/" "302" "--cookie \"lljwt=${ANON_JWT}\""
 }
 
 main "$@"
