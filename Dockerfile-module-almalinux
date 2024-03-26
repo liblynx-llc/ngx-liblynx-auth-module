@@ -1,4 +1,4 @@
-FROM almalinux:8
+FROM almalinux:8.9
 
 # these are overridable but this Dockerfile is aimed at delivering
 # compatibility with more recent nginx versions
@@ -17,8 +17,19 @@ RUN dnf install -y redhat-rpm-config
 RUN yum -y update && \
     yum -y groupinstall 'Development Tools' && \
     yum -y install cmake check gcc gcc-c++ kernel-headers libaio make pcre wget zlib && \
-    yum -y install check-devel libaio-devel libaio libuuid-devel openssl-devel pcre-devel zlib-devel
+    yum -y install check-devel libaio-devel libaio libuuid-devel pcre-devel zlib-devel
     #&& yum -y install nginx-$NGINX_VERSION
+
+RUN mkdir -p /root/dl
+WORKDIR /root/dl
+
+RUN wget https://www.openssl.org/source/openssl-1.1.1g.tar.gz && \
+    tar xvf openssl-1.1.1g.tar.gz && \
+    cd /root/dl/openssl-1.1.1g && \
+    ./config --prefix=/usr/local/openssl --openssldir=/usr/local/openssl && \
+    make && \
+    make install && \
+    ldconfig -n /usr/local/lib
 
 # for compiling for rh-nginx110
 # yum -y install libxml2 libxslt libxml2-devel libxslt-devel gd gd-devel perl-ExtUtils-Embed
@@ -26,7 +37,6 @@ RUN yum -y update && \
 # for compiling for epel8
 RUN yum -y install libxml2 libxslt libxml2-devel libxslt-devel gd gd-devel perl-ExtUtils-Embed geoip geoip-devel google-perftools google-perftools-devel
 
-RUN mkdir -p /root/dl
 WORKDIR /root/dl
 
 # configure and build target nginx without module
@@ -47,10 +57,12 @@ RUN wget http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz && \
     --with-http_secure_link_module --with-http_degradation_module --with-http_slice_module \
     --with-http_stub_status_module --with-http_perl_module=dynamic --with-http_auth_request_module \
     --with-mail=dynamic --with-mail_ssl_module --with-pcre --with-pcre-jit --with-stream=dynamic \
-    --with-stream_ssl_module --with-debug --with-cc-opt='-O2 -g -pipe -Wall -Werror=format-security     -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fexceptions -fstack-protector-strong -grecord-gcc-switches -specs=/usr/lib/rpm/redhat/redhat-hardened-cc1 -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1 -m64     -mtune=generic -fasynchronous-unwind-tables -fstack-clash-protection -fcf-protection' \
-    --with-ld-opt='-Wl,-z,relro -Wl,-z,now -specs=/usr/lib/rpm/redhat/redhat-hardened-ld -Wl,-E' && \
+    --with-openssl=/usr/local/openssl \
+    --with-stream_ssl_module --with-debug && \
     make && \
     make install
+#    --with-cc-opt='-O2 -g -pipe -Wall -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fexceptions -fstack-protector-strong -grecord-gcc-switches -specs=/usr/lib/rpm/redhat/redhat-hardened-cc1 -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1 -m64 -mtune=generic -fasynchronous-unwind-tables -fstack-clash-protection -fcf-protection' \
+#    --with-ld-opt='-Wl,-z,relro -Wl,-z,now -specs=/usr/lib/rpm/redhat/redhat-hardened-ld -Wl,-E' && \
 
 # build jansson
 RUN wget https://github.com/akheron/jansson/archive/v$JANSSON_VERSION.zip && \
