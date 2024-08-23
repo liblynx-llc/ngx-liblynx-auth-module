@@ -1,24 +1,23 @@
-FROM almalinux:8.9
+FROM almalinux:8.10 AS base1
 
 # these are overridable but this Dockerfile is aimed at delivering
 # compatibility with more recent nginx versions
-ARG NGINX_VERSION=1.14.1 # 1.14.1-9.module_el8.3.0+2165+af250afe.alma
-ARG JANSSON_VERSION=2.14-1.el8 # 
-ARG LIBJWT_VERSION=1.12.1-7.el8 # 
+ARG NGINX_VERSION=1.22.1
+ARG JANSSON_VERSION=2.13.1
+ARG LIBJWT_VERSION=1.13.1
 ARG ARCH=x86_64
 
 ENV LD_LIBRARY_PATH=/usr/lib64
 ENV PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/share/pkgconfig
 
-RUN dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm \
-                https://dl.fedoraproject.org/pub/epel/epel-next-release-latest-8.noarch.rpm
-RUN dnf install -y redhat-rpm-config
-
 RUN yum -y update && \
     yum -y groupinstall 'Development Tools' && \
     yum -y install cmake check gcc gcc-c++ kernel-headers libaio make pcre wget zlib && \
-    yum -y install check-devel libaio-devel libaio libuuid-devel pcre-devel zlib-devel
+    yum -y install check-devel libaio-devel libaio libuuid-devel pcre-devel zlib-devel openssl-devel 
     #&& yum -y install nginx-$NGINX_VERSION
+
+
+FROM base1 AS base2
 
 RUN mkdir -p /root/dl
 WORKDIR /root/dl
@@ -31,38 +30,29 @@ RUN wget https://www.openssl.org/source/openssl-1.1.1g.tar.gz && \
     make install && \
     ldconfig -n /usr/local/lib
 
-# for compiling for rh-nginx110
-# yum -y install libxml2 libxslt libxml2-devel libxslt-devel gd gd-devel perl-ExtUtils-Embed
 
-# for compiling for epel8
-RUN yum -y install libxml2 libxslt libxml2-devel libxslt-devel gd gd-devel perl-ExtUtils-Embed geoip geoip-devel google-perftools google-perftools-devel
+FROM base2 AS base3
+
+
+# for compiling for rh-nginx110
+RUN yum -y install libxml2 libxslt libxml2-devel libxslt-devel gd gd-devel perl-ExtUtils-Embed
+
+FROM base3 AS base4
 
 WORKDIR /root/dl
 
 # configure and build target nginx without module
 RUN wget http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz && \
     tar -xzf nginx-$NGINX_VERSION.tar.gz && \
-    rm nginx-$NGINX_VERSION.tar.gz && \
+    rm -f nginx-$NGINX_VERSION.tar.gz && \
     ln -sf nginx-$NGINX_VERSION nginx && \
     cd /root/dl/nginx && \
-    ./configure --prefix=/usr/share/nginx --sbin-path=/usr/sbin/nginx --modules-path=/usr/lib64/nginx/modules \
-    --conf-path=/etc/nginx/nginx.conf --error-log-path=/var/log/nginx/error.log --http-log-path=/var/log/nginx/access.log \
-    --http-client-body-temp-path=/var/lib/nginx/tmp/client_body --http-proxy-temp-path=/var/lib/nginx/tmp/proxy \
-    --http-fastcgi-temp-path=/var/lib/nginx/tmp/fastcgi --http-uwsgi-temp-path=/var/lib/nginx/tmp/uwsgi \
-    --http-scgi-temp-path=/var/lib/nginx/tmp/scgi --pid-path=/run/nginx.pid --lock-path=/run/lock/subsys/nginx \
-    --user=nginx --group=nginx --with-file-aio --with-ipv6 --with-http_ssl_module --with-http_v2_module \
-    --with-http_realip_module --with-http_addition_module --with-http_xslt_module=dynamic \
-    --with-http_image_filter_module=dynamic --with-http_sub_module --with-http_dav_module --with-http_flv_module \
-    --with-http_mp4_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_random_index_module \
-    --with-http_secure_link_module --with-http_degradation_module --with-http_slice_module \
-    --with-http_stub_status_module --with-http_perl_module=dynamic --with-http_auth_request_module \
-    --with-mail=dynamic --with-mail_ssl_module --with-pcre --with-pcre-jit --with-stream=dynamic \
-    --with-openssl=/usr/local/openssl \
-    --with-stream_ssl_module --with-debug && \
+    ./configure --prefix=/usr/share/nginx --with-openssl=/root/dl/openssl-1.1.1g --sbin-path=/usr/sbin/nginx --modules-path=/usr/lib64/nginx/modules --conf-path=/etc/nginx/nginx.conf --error-log-path=/var/log/nginx/error.log --http-log-path=/var/log/nginx/access.log --http-client-body-temp-path=/var/lib/nginx/tmp/client_body --http-proxy-temp-path=/var/lib/nginx/tmp/proxy --http-fastcgi-temp-path=/var/lib/nginx/tmp/fastcgi --http-uwsgi-temp-path=/var/lib/nginx/tmp/uwsgi --http-scgi-temp-path=/var/lib/nginx/tmp/scgi --pid-path=/run/nginx.pid --lock-path=/run/lock/subsys/nginx --user=nginx --group=nginx --with-file-aio --with-http_ssl_module --with-http_v2_module --with-http_realip_module --with-stream_ssl_preread_module --with-http_addition_module --with-http_xslt_module=dynamic --with-http_image_filter_module=dynamic --with-http_sub_module --with-http_dav_module --with-http_flv_module --with-http_mp4_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_random_index_module --with-http_secure_link_module --with-http_degradation_module --with-http_slice_module --with-http_stub_status_module --with-http_perl_module=dynamic --with-http_auth_request_module --with-mail=dynamic --with-mail_ssl_module --with-pcre --with-pcre-jit --with-stream=dynamic --with-stream_realip_module --with-stream_ssl_module --with-debug --with-cc-opt='-O2 -g -pipe -Wall -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fexceptions -fstack-protector-strong -grecord-gcc-switches -specs=/usr/lib/rpm/redhat/redhat-hardened-cc1 -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1 -m64 -mtune=generic -fasynchronous-unwind-tables -fstack-clash-protection -fcf-protection' --with-compat --with-ld-opt='-Wl,-z,relro -Wl,-z,now -specs=/usr/lib/rpm/redhat/redhat-hardened-ld -Wl,-E' && \
     make && \
-    make install
-#    --with-cc-opt='-O2 -g -pipe -Wall -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fexceptions -fstack-protector-strong -grecord-gcc-switches -specs=/usr/lib/rpm/redhat/redhat-hardened-cc1 -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1 -m64 -mtune=generic -fasynchronous-unwind-tables -fstack-clash-protection -fcf-protection' \
-#    --with-ld-opt='-Wl,-z,relro -Wl,-z,now -specs=/usr/lib/rpm/redhat/redhat-hardened-ld -Wl,-E' && \
+    make install 
+
+FROM base4 AS base5
+
 
 # build jansson
 RUN wget https://github.com/akheron/jansson/archive/v$JANSSON_VERSION.zip && \
@@ -70,10 +60,14 @@ RUN wget https://github.com/akheron/jansson/archive/v$JANSSON_VERSION.zip && \
     rm v$JANSSON_VERSION.zip && \
     ln -sf jansson-$JANSSON_VERSION jansson && \
     cd /root/dl/jansson && \
-    cmake . -DJANSSON_BUILD_SHARED_LIBS=1 -DJANSSON_BUILD_DOCS=OFF && \
+    autoreconf -vi && \
+    ./configure --prefix=/usr && \
     make && \
     make check && \
     make install
+
+
+FROM base5 AS base6
 
 # build libjwt
 RUN wget https://github.com/benmcollins/libjwt/archive/v$LIBJWT_VERSION.zip && \
@@ -82,27 +76,35 @@ RUN wget https://github.com/benmcollins/libjwt/archive/v$LIBJWT_VERSION.zip && \
     ln -sf libjwt-$LIBJWT_VERSION libjwt && \
     cd /root/dl/libjwt && \
     autoreconf -i && \
-    ./configure && \
+    ./configure --prefix=/usr && \
     make all && \
     make install
 
+FROM base6 AS base7
+
+
 # now we have an alma 8 container, with our target nginx and supporting libraries - we can set things up
-# to allow rapid rebuilding of our module
+# to allow rapid rebuilding of our module
 
 # copy enough that we can configure nginx and just keep it in layer...
 RUN mkdir /root/dl/ngx-liblynx-auth-module
 ADD config /root/dl/ngx-liblynx-auth-module/
 
-RUN cd /root/dl/nginx && \
-  ./configure --add-dynamic-module=../ngx-liblynx-auth-module --prefix=/usr/share/nginx --sbin-path=/usr/sbin/nginx --modules-path=/usr/lib64/nginx/modules --conf-path=/etc/nginx/nginx.conf --error-log-path=/var/log/nginx/error.log --http-log-path=/var/log/nginx/access.log --http-client-body-temp-path=/var/lib/nginx/tmp/client_body --http-proxy-temp-path=/var/lib/nginx/tmp/proxy --http-fastcgi-temp-path=/var/lib/nginx/tmp/fastcgi --http-uwsgi-temp-path=/var/lib/nginx/tmp/uwsgi --http-scgi-temp-path=/var/lib/nginx/tmp/scgi --pid-path=/run/nginx.pid --lock-path=/run/lock/subsys/nginx --user=nginx --group=nginx --with-file-aio --with-ipv6 --with-http_ssl_module --with-http_v2_module --with-http_realip_module --with-stream_ssl_preread_module --with-http_addition_module --with-http_xslt_module=dynamic --with-http_image_filter_module=dynamic --with-http_sub_module --with-http_dav_module --with-http_flv_module --with-http_mp4_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_random_index_module --with-http_secure_link_module --with-http_degradation_module --with-http_slice_module --with-http_stub_status_module --with-http_perl_module=dynamic --with-http_auth_request_module --with-mail=dynamic --with-mail_ssl_module --with-pcre --with-pcre-jit --with-stream=dynamic --with-stream_ssl_module --with-google_perftools_module --with-debug --with-cc-opt='-O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector-strong --param=ssp-buffer-size=4 -grecord-gcc-switches -specs=/usr/lib/rpm/redhat/redhat-hardened-cc1 -m64 -mtune=generic -std=gnu99' --with-ld-opt='-Wl,-z,relro -specs=/usr/lib/rpm/redhat/redhat-hardened-ld -Wl,-E'
+FROM base7 AS base8
 
+RUN cd /root/dl/nginx && \
+   ./configure --add-dynamic-module=../ngx-liblynx-auth-module --prefix=/usr/share/nginx --with-openssl=/root/dl/openssl-1.1.1g --sbin-path=/usr/sbin/nginx --modules-path=/usr/lib64/nginx/modules --conf-path=/etc/nginx/nginx.conf --error-log-path=/var/log/nginx/error.log --http-log-path=/var/log/nginx/access.log --http-client-body-temp-path=/var/lib/nginx/tmp/client_body --http-proxy-temp-path=/var/lib/nginx/tmp/proxy --http-fastcgi-temp-path=/var/lib/nginx/tmp/fastcgi --http-uwsgi-temp-path=/var/lib/nginx/tmp/uwsgi --http-scgi-temp-path=/var/lib/nginx/tmp/scgi --pid-path=/run/nginx.pid --lock-path=/run/lock/subsys/nginx --user=nginx --group=nginx --with-file-aio --with-http_ssl_module --with-http_v2_module --with-http_realip_module --with-stream_ssl_preread_module --with-http_addition_module --with-http_xslt_module=dynamic --with-http_image_filter_module=dynamic --with-http_sub_module --with-http_dav_module --with-http_flv_module --with-http_mp4_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_random_index_module --with-http_secure_link_module --with-http_degradation_module --with-http_slice_module --with-http_stub_status_module --with-http_perl_module=dynamic --with-http_auth_request_module --with-mail=dynamic --with-mail_ssl_module --with-pcre --with-pcre-jit --with-stream=dynamic --with-stream_realip_module --with-stream_ssl_module --with-debug --with-cc-opt='-O2 -g -pipe -Wall -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fexceptions -fstack-protector-strong -grecord-gcc-switches -specs=/usr/lib/rpm/redhat/redhat-hardened-cc1 -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1 -m64 -mtune=generic -fasynchronous-unwind-tables -fstack-clash-protection -fcf-protection' --with-compat --with-ld-opt='-Wl,-z,relro -Wl,-z,now -specs=/usr/lib/rpm/redhat/redhat-hardened-ld -Wl,-E'
+
+ 
 # now we can add the latest source - changes will trigger these layers and below
 ADD . /root/dl/ngx-liblynx-auth-module
 
 # now build the module
 RUN cd /root/dl/nginx && \
-  make modules && \
-  cp /root/dl/nginx/objs/ngx_liblynx_auth_module.so /usr/lib64/nginx/modules/.
+  make modules 
+
+RUN mkdir -p /usr/share/nginx/modules/
+RUN cp /root/dl/nginx/objs/ngx_liblynx_auth_module.so /usr/share/nginx/modules/
 
 # Get nginx ready to run for testing
 COPY resources/nginx.conf /etc/nginx/nginx.conf
@@ -111,16 +113,17 @@ RUN rm -rf /usr/share/nginx/html
 RUN cp -r /root/dl/nginx/html /usr/share/nginx
 RUN cp -r /usr/share/nginx/html /usr/share/nginx/secure
 RUN cp -r /usr/share/nginx/html /usr/share/nginx/secure-abcd
+RUN cp -r /usr/share/nginx/html /usr/share/nginx/soft
 RUN /usr/sbin/useradd nginx
 RUN mkdir -p /var/lib/nginx/tmp
 RUN chown -R nginx.nginx /var/lib/nginx/tmp
 
 # copy build artifacts where they can be easily extracted
 RUN mkdir /root/build && \
-  cp /usr/lib64/nginx/modules/ngx_liblynx_auth_module.so /root/build/ &&\
-  cp /usr/local/lib/libjansson.* /root/build/ && \
-  cp /usr/local/lib/libjwt.* /root/build/ && \
-  cp /usr/local/lib/pkgconfig/*.pc /root/build/
+  cp /usr/share/nginx/modules/ngx_liblynx_auth_module.so /root/build/ &&\
+  cp /usr/lib64/libjansson.* /root/build/ && \
+  cp /usr/lib64/libjwt.* /root/build/ && \
+  cp /usr/lib64/pkgconfig/libjwt.pc /root/build/
 
 # set up a flexible entrypoint
 ADD entrypoint.sh /root/entrypoint.sh
