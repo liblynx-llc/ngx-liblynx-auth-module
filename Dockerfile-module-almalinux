@@ -1,3 +1,8 @@
+#
+# This build has been tested with AlmaLinux 8.10 and nginx 1.22.1 - to build this, use 
+# make all BASE=almalinux NGINX=1.22.1
+#
+
 FROM almalinux:8.10 AS base1
 
 # these are overridable but this Dockerfile is aimed at delivering
