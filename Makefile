@@ -55,7 +55,7 @@ stop-nginx:
 .PHONY: start-nginx
 start-nginx        : ## Start docker container running nginx with module
 start-nginx:
-	docker run --rm --name "$(DOCKER_IMAGE_NAME)" -d -p 8000:8000 $(DOCKER_ORG_NAME)/$(DOCKER_IMAGE_NAME):$(NGINX)
+	docker run --rm --name "$(DOCKER_IMAGE_NAME)" -d -p 0.0.0.0:8000:8000 $(DOCKER_ORG_NAME)/$(DOCKER_IMAGE_NAME):$(NGINX)
 
 .PHONY: test-runner
 test-runner  : ## Build container for running tests
