@@ -7,12 +7,12 @@
  *
  * https://github.com/liblynx-llc/ngx-liblynx-auth-module
  */
-
-#include <jansson.h>
-#include <jwt.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
+#include <jansson.h>
+#include <jwt.h>
+
 
 #include "ngx_liblynx_auth_header_processing.h"
 #include "ngx_liblynx_auth_string.h"
@@ -852,11 +852,10 @@ static char *get_target_from_url(ngx_http_request_t *r) {
 static char *get_jwt_from_cookie(ngx_http_request_t *r, ngx_str_t auth_liblynx_cookie_name) {
 
     char *jwtCookieValChrPtr = NULL;
-    ngx_int_t location;
+    ngx_table_elt_t *location;
     ngx_str_t cookie_value;
-    location = ngx_http_parse_multi_header_lines(&r->headers_in.cookies, &auth_liblynx_cookie_name,
-                                                 &cookie_value);
-    if (location != NGX_DECLINED) {
+    location = ngx_http_parse_multi_header_lines(r, r->headers_in.cookie, &auth_liblynx_cookie_name, &cookie_value);
+    if (location != NULL) {
         jwtCookieValChrPtr = ngx_str_t_to_char_ptr(r->pool, cookie_value);
     }
     return jwtCookieValChrPtr;

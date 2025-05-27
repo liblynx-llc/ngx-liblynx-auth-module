@@ -8,7 +8,7 @@ NC    := \033[0m
 DOCKER_ORG_NAME = liblynx
 DOCKER_IMAGE_NAME = liblynx-nginx
 
-NGINX=1.10.1
+NGINX=1.24.0
 
 PWD = $(shell pwd)
 
