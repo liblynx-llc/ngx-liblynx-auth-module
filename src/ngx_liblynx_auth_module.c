@@ -415,12 +415,12 @@ static int redirect_with_cookie(ngx_http_request_t *r, ngx_liblynx_auth_loc_conf
     // strip _lljwt from query string
     url = ngx_get_fully_qualified_url(r);
 
-    tokenArg = ngx_strstr(url, "_lljwt=");
+    tokenArg = (char *)ngx_strstr(url, "_lljwt=");
     if (!tokenArg) {
         return server_error(r, "redirect_with_cookie called from invalid url");
     }
 
-    additionalArgs = ngx_strchr(tokenArg, '&');
+    additionalArgs = (char *)ngx_strchr(tokenArg, '&');
     if (additionalArgs) {
         int lenAdditionalArgs;
         // we're going to copy everything after the first &
